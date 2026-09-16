@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - v*
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: 'true'
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.3.0.app
+
+      - name: Compile Feather
+        run: | 
+          agvtool new-version -all $(git rev-parse HEAD)
+          make
+          mkdir upload
+          mv packages/* upload/
+
+      - name: Extract Version
+        id: get_version
+        run: |
+          # 找到打包后的Info.plist
+          PLIST=$(find _build/Payload -name "Info.plist" | head -n1)
+          echo "Found plist: $PLIST"
+          # 读取版本，失败就用git tag兜底
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$PLIST" 2>/dev/null || echo "${GITHUB_REF#refs/tags/v}")
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Feather v${{ env.VERSION }}
+          tag_name: v${{ env.VERSION }}
+          files: |
+            upload/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          draft: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
